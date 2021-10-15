@@ -51,6 +51,9 @@ TimeChangeRule CEST = {"CEST", Last, Sun, Mar, 2, 120};     // Central European 
 TimeChangeRule CET = {"CET ", Last, Sun, Oct, 3, 60};       // Central European Standard Time
 Timezone CE(CEST, CET);
 
+// Time variable
+unsigned long Epoch;
+
 // Images
 const int MoonData[256][3] PROGMEM =
 {
@@ -123,6 +126,14 @@ void setup() {
 
   // Start time client
   TimeClient.begin();
+  
+  // Update time client
+  if (TimeClient.update()) {
+     // Serial.println("Adjust local clock");
+     setTime(TimeClient.getEpochTime());
+  } else {
+     Serial.println("NTP update did not work");
+  }
 }
 
 void loop() {
@@ -140,6 +151,9 @@ void loop() {
     }
     Matrix.show();
   }
+
+  // Sleep for 45 seconds
+  delay(45000);
 
   // If Moon displayed
   // then request the server to know when the sun has to rise
@@ -169,28 +183,16 @@ void loop() {
     // Serial.print("Minute: ");
     // Serial.println(WUMinute);
   
-    // Update time client
-    if (TimeClient.update()) {
-       // Serial.println("Adjust local clock");
-       unsigned long Epoch = TimeClient.getEpochTime();
-       setTime(Epoch);
-    } else {
-       Serial.println("NTP update did not work");
-    }
-  
     String WUHourMinute = (String) WUHour + ":" + (String) WUMinute;
     String NowHourMinute = GetEpochStringByParams(CE.toLocal(now()), "%H:%M");
+    Serial.print("WUHourMinute: ");
+    Serial.println(WUHourMinute);
+    Serial.print("NowHourMinute: ");
+    Serial.println(NowHourMinute);
     if (WUHourMinute == NowHourMinute) {
-      // Serial.print("WUHourMinute: ");
-      // Serial.println(WUHourMinute);
-      // Serial.print("NowHourMinute: ");
-      // Serial.println(NowHourMinute);
       NewImageIndex = 1;
     }
   }
-
-  // Sleep for 45 seconds
-  delay(45000);
 }
 
 void DisplayMoonPixels() {
