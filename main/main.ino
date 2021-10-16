@@ -21,6 +21,18 @@
 // Include credentials
 #include "secrets.h"
 
+// Include logging lib
+#include "SerialLogging.h"
+
+/////////////////////////////////////////////////////////////////////////////////////////:
+/////////////////////////////////////////////////////////////////////////////////////////:
+/////////////////////////////////////////////////////////////////////////////////////////:
+
+// Logging, change this to enable or disable logging
+// Possible values: true, false
+bool LoggingEnabled = true;
+SerialLogging Logging(LoggingEnabled);
+
 // Define the pins
 #define LEDS_PIN 2
 
@@ -53,6 +65,10 @@ Timezone CE(CEST, CET);
 
 // Time variable
 unsigned long Epoch;
+
+// Variable to retrieve time from server
+int WUHour = 0;
+int WUMinute = 0;
 
 // Images
 const int MoonData[256][3] PROGMEM =
@@ -95,9 +111,7 @@ const int SunData[256][3] PROGMEM =
 };
 
 void setup() {
-  // Wait for serial port to connect
-  // Needed for native USB port only
-  Serial.begin(9600);
+  Logging.SetSpeed(9600);
   
   // Setup leds matrix
   Matrix.begin();
@@ -105,35 +119,39 @@ void setup() {
 
   // Setup Wifi
   if (WiFi.status() == WL_NO_MODULE) {
-    Serial.println("Communication with WiFi module failed!");
+    Logging.Print("Communication with WiFi module failed!");
     while (true);
   }
 
   String FirmwareVersion = WiFi.firmwareVersion();
   if (FirmwareVersion < WIFI_FIRMWARE_LATEST_VERSION) {
-    Serial.println("Please upgrade the firmware");
+    Logging.Print("Please upgrade the firmware");
   }
 
   while (WifiStatus != WL_CONNECTED) {
-    Serial.print("Attempting to connect to WPA SSID: ");
-    Serial.println(WifiSSID);
+    Logging.Print("Attempting to connect to WPA SSID: ", false);
+    Logging.Print((String) WifiSSID);
+    
     // Connect to WPA/WPA2 network:
     WifiStatus = WiFi.begin(WifiSSID, WifiPasswd);
 
     // Wait 5 seconds for connection:
     delay(5000);
   }
+  Logging.Print("Connected !");
 
-  // Start time client
+  Logging.Print("Start time client... ", false);
   TimeClient.begin();
+  Logging.Print("OK");
   
-  // Update time client
-  if (TimeClient.update()) {
-     // Serial.println("Adjust local clock");
-     setTime(TimeClient.getEpochTime());
-  } else {
-     Serial.println("NTP update did not work");
+  Logging.Print("Update time client... ", false);
+  while (!TimeClient.update()) {
+     Logging.Print("NTP update did not work");
   }
+  Logging.Print("OK");
+  Logging.Print("Adjust local clock... ", false);
+  setTime(TimeClient.getEpochTime());
+  Logging.Print("OK");
 }
 
 void loop() {
@@ -143,16 +161,18 @@ void loop() {
     
     Matrix.clear();
     if (ImageIndex == 0) {
-        Matrix.setBrightness(1);
-        DisplayMoonPixels();
+      Logging.Print("Display moon at brightness 1");
+      Matrix.setBrightness(1);
+      DisplayMoonPixels();
     } else if (ImageIndex == 1) {
-        Matrix.setBrightness(5);
-        DisplaySunPixels();
+      Logging.Print("Display sun at brightness 5");
+      Matrix.setBrightness(5);
+      DisplaySunPixels();
     }
     Matrix.show();
   }
 
-  // Sleep for 45 seconds
+  Logging.Print("Sleep for 45 seconds...");
   delay(45000);
 
   // If Moon displayed
@@ -167,28 +187,38 @@ void loop() {
     
     int ResponseStatusCode = HttpsCli.responseStatusCode();
     String WebServerResponse = HttpsCli.responseBody();
-    // Serial.print("Status code: ");
-    // Serial.println(ResponseStatusCode);
-    // Serial.print("Response: ");
-    // Serial.println(WebServerResponse);
+    Logging.Print("Status code: ", false);
+    Logging.Print((String) ResponseStatusCode);
+    Logging.Print("Response: ", false);
+    Logging.Print((String) WebServerResponse);
   
     JSONVar InputDatetime = JSON.parse(WebServerResponse);
-    if (JSON.typeof(InputDatetime) == "undefined") {
-      Serial.println("Parsing response JSON failed!");
+    if (JSON.typeof(InputDatetime) != "undefined") {
+      WUHour = (int) InputDatetime["attributes"]["hour"];
+      WUMinute = (int) InputDatetime["attributes"]["minute"];
+      Logging.Print("Hour: ", false);
+      Logging.Print((String) WUHour);
+      Logging.Print("Minute: ", false);
+      Logging.Print((String) WUMinute);
+    } else {
+      Logging.Print("Parsing response JSON failed!");
     }
-    int WUHour = (int) InputDatetime["attributes"]["hour"];
-    int WUMinute = (int) InputDatetime["attributes"]["minute"];
-    // Serial.print("Hour: ");
-    // Serial.println(WUHour);
-    // Serial.print("Minute: ");
-    // Serial.println(WUMinute);
-  
-    String WUHourMinute = (String) WUHour + ":" + (String) WUMinute;
+
+    String WUHourMinute = "";
+    if (WUHour < 10) {
+        WUHourMinute = "0";
+    }
+    WUHourMinute += (String) WUHour + ":";
+    if (WUMinute < 10) {
+      WUHourMinute += "0";
+    }
+    WUHourMinute += (String) WUMinute;
+    
     String NowHourMinute = GetEpochStringByParams(CE.toLocal(now()), "%H:%M");
-    Serial.print("WUHourMinute: ");
-    Serial.println(WUHourMinute);
-    Serial.print("NowHourMinute: ");
-    Serial.println(NowHourMinute);
+    Logging.Print("WUHourMinute: ", false);
+    Logging.Print((String) WUHourMinute);
+    Logging.Print("NowHourMinute: ", false);
+    Logging.Print((String) NowHourMinute);
     if (WUHourMinute == NowHourMinute) {
       NewImageIndex = 1;
     }
