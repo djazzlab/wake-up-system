@@ -30,7 +30,7 @@
 
 // Logging, change this to enable or disable logging
 // Possible values: true, false
-bool LoggingEnabled = true;
+bool LoggingEnabled = false;
 SerialLogging Logging(LoggingEnabled);
 
 // Define the pins
@@ -39,6 +39,9 @@ SerialLogging Logging(LoggingEnabled);
 // Leds Matrix
 #define PIXELS 256
 Adafruit_NeoPixel Matrix(PIXELS, LEDS_PIN, NEO_GRB + NEO_KHZ800);
+
+// Global status colors
+enum StatusColors { RED, ORANGE, GREEN, BLACK };
 
 // Image index, Moon = 0 (default), Sun = 1, 99 is nothing
 int ImageIndex = 99;
@@ -115,7 +118,9 @@ void setup() {
   
   // Setup leds matrix
   Matrix.begin();
-  Matrix.show();
+
+  // First status = RED
+  DisplayStatus(RED);
 
   // Setup Wifi
   if (WiFi.status() == WL_NO_MODULE) {
@@ -140,6 +145,38 @@ void setup() {
   }
   Logging.Print("Connected !");
 
+  // Second status = ORANGE
+  DisplayStatus(ORANGE);
+
+  // Code to request wake up time to Home Assistant
+  HttpsCli.beginRequest();
+  HttpsCli.get(API_URI);
+  HttpsCli.sendHeader(API_AUTH_HEADER);
+  HttpsCli.sendHeader("Content-Type: application/json");
+  HttpsCli.endRequest();
+  
+  int ResponseStatusCode = HttpsCli.responseStatusCode();
+  String WebServerResponse = HttpsCli.responseBody();
+  Logging.Print("Status code: ", false);
+  Logging.Print((String) ResponseStatusCode);
+  Logging.Print("Response: ", false);
+  Logging.Print((String) WebServerResponse);
+
+  JSONVar InputDatetime = JSON.parse(WebServerResponse);
+  if (JSON.typeof(InputDatetime) != "undefined") {
+    WUHour = (int) InputDatetime["attributes"]["hour"];
+    WUMinute = (int) InputDatetime["attributes"]["minute"];
+    Logging.Print("Hour: ", false);
+    Logging.Print((String) WUHour);
+    Logging.Print("Minute: ", false);
+    Logging.Print((String) WUMinute);
+  } else {
+    Logging.Print("Parsing response JSON failed!");
+  }
+
+  // Third status = GREEN
+  DisplayStatus(GREEN);
+
   Logging.Print("Start time client... ", false);
   TimeClient.begin();
   Logging.Print("OK");
@@ -152,6 +189,9 @@ void setup() {
   Logging.Print("Adjust local clock... ", false);
   setTime(TimeClient.getEpochTime());
   Logging.Print("OK");
+
+  // Last status = BLACK
+  DisplayStatus(BLACK);
 }
 
 void loop() {
@@ -172,38 +212,12 @@ void loop() {
     Matrix.show();
   }
 
-  Logging.Print("Sleep for 45 seconds...");
-  delay(45000);
+  Logging.Print("Sleep for 1 second...");
+  delay(1000);
 
   // If Moon displayed
   // then request the server to know when the sun has to rise
   if (ImageIndex == 0) {
-    // Code to request wake up time to Home Assistant
-    HttpsCli.beginRequest();
-    HttpsCli.get(API_URI);
-    HttpsCli.sendHeader(API_AUTH_HEADER);
-    HttpsCli.sendHeader("Content-Type: application/json");
-    HttpsCli.endRequest();
-    
-    int ResponseStatusCode = HttpsCli.responseStatusCode();
-    String WebServerResponse = HttpsCli.responseBody();
-    Logging.Print("Status code: ", false);
-    Logging.Print((String) ResponseStatusCode);
-    Logging.Print("Response: ", false);
-    Logging.Print((String) WebServerResponse);
-  
-    JSONVar InputDatetime = JSON.parse(WebServerResponse);
-    if (JSON.typeof(InputDatetime) != "undefined") {
-      WUHour = (int) InputDatetime["attributes"]["hour"];
-      WUMinute = (int) InputDatetime["attributes"]["minute"];
-      Logging.Print("Hour: ", false);
-      Logging.Print((String) WUHour);
-      Logging.Print("Minute: ", false);
-      Logging.Print((String) WUMinute);
-    } else {
-      Logging.Print("Parsing response JSON failed!");
-    }
-
     String WUHourMinute = "";
     if (WUHour < 10) {
         WUHourMinute = "0";
@@ -245,4 +259,22 @@ void DisplaySunPixels() {
       pgm_read_dword(&(SunData[LedID][2]))
     );
   }
+}
+
+void DisplayStatus(StatusColors StatusColor) {
+  switch (StatusColor) {
+    case RED:
+      Matrix.setPixelColor(240, 255, 0, 0);
+      break;
+    case ORANGE:
+      Matrix.setPixelColor(240, 255, 153, 0);
+      break;
+    case GREEN:
+      Matrix.setPixelColor(240, 153, 255, 51);
+      break;
+    default:
+      Matrix.setPixelColor(240, 0, 0, 0);
+      break;
+  }
+  Matrix.show();
 }
